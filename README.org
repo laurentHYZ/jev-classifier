@@ -1,0 +1,37 @@
+#+title: Jev Classifier
+#+subtitle: type-safe text classification in the browser, backed by TypeSafe Jev
+
+A single static page plus a ~130-line stdlib proxy. Paste text, define typed
+questions (=choice=, =score=, =noul=), get structured answers with probabilities
+and confidence. No framework, no build step, no dependencies.
+
+* Why a proxy
+=api.typesafe.ai= replies to =OPTIONS= with ~Disallowed CORS origin~, so a browser
+cannot call it directly. =server.py= forwards the call server-side, which also
+keeps =TYPESAFE_API_KEY= out of client-side JavaScript.
+
+* Run
+#+begin_src bash
+export TYPESAFE_API_KEY="..."
+python3 server.py          # → http://localhost:8000
+#+end_src
+=PORT= and =JEV_MODEL= are optional (=jev-latest= by default).
+
+* Layout
+| file         | role                                                    |
+|--------------+---------------------------------------------------------|
+| =index.html=   | UI: state editor, question builder, result rendering     |
+| =server.py=    | static file server + =POST /api/systemone= proxy           |
+
+* Primitives used
+- =choice= → one label from a closed set, with =probabilities= and =confidence=
+- =score=  → position on an ordered rubric
+- =noul=   → probability that one statement is true (0–1)
+
+Questions are atomic and independent; combine them in code (or in the UI) rather
+than asking one vague question that weighs several factors.
+
+* Deploy notes
+- Serving beyond localhost: put it behind a reverse proxy with TLS and add
+  authentication. The proxy holds a key that can spend money.
+- Do not commit =.env=; the key belongs in the environment.

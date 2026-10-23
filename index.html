@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jev Classifier</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel-2: #1e222b; --line: #2a2f3a;
+    --fg: #e6e9ef; --muted: #8b93a3; --accent: #6ee7b7; --accent-2: #60a5fa;
+    --warn: #fbbf24; --err: #f87171; --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px 20px 80px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
+  h1 span { color: var(--accent); }
+  .sub { color: var(--muted); font-size: 13px; }
+  .sub a { color: var(--accent-2); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 18px; }
+  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 16px;
+  }
+  .card > h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 0 0 12px; font-weight: 600;
+  }
+  textarea, input, select {
+    width: 100%; background: var(--panel-2); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 11px; font: inherit; font-size: 14px;
+  }
+  textarea { resize: vertical; min-height: 110px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }
+  textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent-2); }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 5px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  button {
+    background: var(--panel-2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 13px; font: inherit; font-size: 13px;
+    cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  button:hover { border-color: #3d4453; background: #232833; }
+  button.primary {
+    background: var(--accent); color: #06281d; border-color: transparent;
+    font-weight: 600; padding: 11px 20px; font-size: 14px;
+  }
+  button.primary:hover { background: #86efc4; }
+  button.primary:disabled { opacity: .5; cursor: progress; }
+  button.ghost { background: transparent; }
+  button.danger:hover { border-color: var(--err); color: var(--err); }
+  .q { border: 1px solid var(--line); border-radius: 9px; padding: 12px; margin-bottom: 12px; background: var(--panel-2); }
+  .q-head { display: flex; gap: 8px; align-items: center; }
+  .q-head input.id { flex: 0 0 34%; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+  .q-head select { flex: 0 0 auto; width: auto; padding: 10px 8px; }
+  .q-head .spacer { flex: 1; }
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+  .hint code { color: var(--accent-2); }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+  .status { font-size: 12.5px; color: var(--muted); min-height: 1.2em; }
+  .status.err { color: var(--err); }
+  .status.ok { color: var(--accent); }
+  .ans { border-top: 1px solid var(--line); padding: 14px 0; }
+  .ans:last-child { border-bottom: none; }
+  .ans-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .ans-id { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .ans-val { font-size: 17px; font-weight: 600; }
+  .ans-val.choice { color: var(--accent); }
+  .ans-val.score { color: var(--accent-2); }
+  .ans-val.noul { color: var(--warn); }
+  .conf { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+  .bars { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+  .bar { display: grid; grid-template-columns: 90px 1fr 52px; gap: 8px; align-items: center; font-size: 12px; }
+  .bar-name { color: var(--muted); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { background: #262b35; border-radius: 4px; height: 8px; overflow: hidden; }
+  .bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); border-radius: 4px; }
+  .bar-pct { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .meta { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--muted); padding-top: 10px; border-top: 1px solid var(--line); }
+  pre {
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; overflow: auto; font-size: 12px; max-height: 380px; margin: 10px 0 0;
+  }
+  .empty { color: var(--muted); font-size: 13.5px; padding: 20px 0; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Jev <span>Classifier</span></h1>
+    <div class="sub">typed decisions from <a href="https://docs.typesafe.ai" target="_blank" rel="noopener">TypeSafe</a> — choice · score · noul</div>
+  </header>
+
+  <div class="grid">
+    <!-- ── left: state + questions ───────────────────────────── -->
+    <form class="card" id="form">
+      <h2>State</h2>
+      <textarea id="state" placeholder="Paste the text to classify…"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button type="button" class="ghost" id="sample">Load sample</button>
+        <button type="button" class="ghost" id="clear">Clear</button>
+        <span class="status" id="state-status"></span>
+      </div>
+
+      <h2 style="margin-top:20px">Questions</h2>
+      <div id="questions"></div>
+      <button type="button" class="ghost" id="add-q">+ Add question</button>
+
+      <div class="actions">
+        <button class="primary" id="run" type="submit">Classify</button>
+        <span class="status" id="status"></span>
+      </div>
+      <details>
+        <summary>Request JSON</summary>
+        <pre id="req-json"></pre>
+      </details>
+    </form>
+
+    <!-- ── right: results ────────────────────────────────────── -->
+    <div class="card">
+      <h2>Answers</h2>
+      <div id="results"><div class="empty">Nothing classified yet.</div></div>
+      <details id="raw-wrap" hidden>
+        <summary>Raw response</summary>
+        <pre id="raw"></pre>
+      </details>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const $ = (sel) => document.querySelector(sel);
+const el = (tag, props = {}, ...kids) => {
+  const n = Object.assign(document.createElement(tag), props);
+  for (const k of kids) n.append(k);
+  return n;
+};
+
+/* ── question model ─────────────────────────────────────────── */
+
+const QUESTIONS = [
+  {
+    id: "kind",
+    type: "choice",
+    instructions: "What kind of content is this?",
+    criteria: {
+      bug: "A defect or malfunction in software or hardware",
+      question: "Someone asking for an answer or explanation",
+      announcement: "Information broadcast to an audience, no action requested",
+      idea: "A proposal for something that does not exist yet",
+    },
+  },
+  {
+    id: "needs_reply",
+    type: "noul",
+    instructions: "The author expects a reply from a specific person or the reader",
+  },
+  {
+    id: "urgency",
+    type: "score",
+    instructions: "How time-sensitive is this?",
+    criteria: [
+      "No deadline implied",
+      "Should be handled this week",
+      "Blocking someone right now",
+    ],
+  },
+];
+
+const SAMPLE = `Subject: login broken again after this morning's deploy
+
+Since the 09:15 deploy nobody on the support team can log in — we're getting
+"invalid session" on every attempt, so we can't open tickets at all. Our
+customers are emailing us and we can't answer them. Can someone look at this
+right away? This is the second time this month.`;
+
+/* ── render question editor ─────────────────────────────────── */
+
+function criteriaText(q) {
+  if (q.type === "choice") {
+    return Object.entries(q.criteria || {}).map(([k, v]) => `${k}: ${v}`).join("\n");
+  }
+  if (q.type === "score") return (q.criteria || []).join("\n");
+  return "";
+}
+
+function parseCriteria(q, text) {
+  const lines = text.split("\n").map(s => s.trim()).filter(Boolean);
+  if (q.type === "choice") {
+    const out = {};
+    for (const line of lines) {
+      const i = line.indexOf(":");
+      if (i === -1) { out[line] = line; continue; }
+      out[line.slice(0, i).trim()] = line.slice(i + 1).trim();
+    }
+    return out;
+  }
+  return lines;
+}
+
+function criteriaHint(type) {
+  if (type === "choice") return "one option per line — <code>key: description</code>";
+  if (type === "score")  return "one level per line, lowest first (0, 1, 2 …)";
+  return "no criteria — the answer is a probability between 0 and 1";
+}
+
+function renderQuestions() {
+  const host = $("#questions");
+  host.textContent = "";
+  QUESTIONS.forEach((q, idx) => {
+    const card = el("div", { className: "q" });
+
+    const idInput = el("input", { className: "id", value: q.id, spellcheck: false,
+      oninput: e => { q.id = e.target.value.trim() || `q${idx + 1}`; preview(); } });
+    idInput.setAttribute("aria-label", "question id");
+
+    const typeSel = el("select", { onchange: e => {
+        q.type = e.target.value;
+        if (q.type === "noul") delete q.criteria;
+        preview();
+        renderQuestions();
+      } },
+      ...["choice", "score", "noul"].map(t => el("option", { value: t, selected: t === q.type }, t)));
+
+    const del = el("button", { type: "button", className: "ghost danger", title: "remove",
+      onclick: () => { QUESTIONS.splice(idx, 1); renderQuestions(); } }, "✕");
+
+    card.append(el("div", { className: "q-head" }, idInput, typeSel, el("span", { className: "spacer" }), del));
+
+    const instr = el("textarea", { value: q.instructions, rows: 2, style: "min-height:56px",
+      placeholder: "One atomic question…",
+      oninput: e => { q.instructions = e.target.value; preview(); } });
+    card.append(el("label", {}, "Instructions"), instr);
+
+    if (q.type !== "noul") {
+      const crit = el("textarea", { rows: 4, value: criteriaText(q),
+        placeholder: q.type === "choice" ? "bug: A defect…\nquestion: …" : "Level 0\nLevel 1\nLevel 2",
+        oninput: e => { q.criteria = parseCriteria(q, e.target.value); preview(); } });
+      card.append(el("label", {}, "Criteria"), crit);
+    }
+
+    const hint = el("div", { className: "hint" });
+    hint.innerHTML = criteriaHint(q.type);
+    card.append(hint);
+    host.append(card);
+  });
+  preview();
+}
+
+/* ── request building ───────────────────────────────────────── */
+
+function buildQuestions() {
+  const out = {};
+  for (const q of QUESTIONS) {
+    const id = (q.id || "").trim();
+    if (!id) throw new Error("every question needs an id");
+    if (out[id]) throw new Error(`duplicate question id: ${id}`);
+    const spec = { type: q.type, instructions: q.instructions || "" };
+    if (!spec.instructions.trim()) throw new Error(`“${id}” has no instructions`);
+    if (q.type !== "noul") {
+      const c = q.criteria;
+      const empty = !c || (Array.isArray(c) ? c.length === 0 : Object.keys(c).length === 0);
+      if (empty) throw new Error(`“${id}” has no criteria`);
+      spec.criteria = c;
+    }
+    out[id] = spec;
+  }
+  if (!Object.keys(out).length) throw new Error("add at least one question");
+  return out;
+}
+
+function buildRequest() {
+  const state = $("#state").value.trim();
+  if (!state) throw new Error("state is empty");
+  return { state, questions: buildQuestions() };
+}
+
+function preview() {
+  try {
+    $("#req-json").textContent = JSON.stringify(buildRequest(), null, 2);
+  } catch {
+    $("#req-json").textContent = "// incomplete — fill in state, ids, instructions and criteria";
+  }
+}
+
+/* ── results rendering ──────────────────────────────────────── */
+
+function bars(probabilities, legend, chosen) {
+  if (!probabilities) return null;
+  const entries = Object.entries(probabilities)
+    .map(([k, v]) => [legend?.[k] ?? k, v])
+    .sort((a, b) => b[1] - a[1]);
+  const wrap = el("div", { className: "bars" });
+  for (const [name, p] of entries) {
+    const pct = Math.round(p * 100);
+    wrap.append(el("div", { className: "bar" },
+      el("div", { className: "bar-name", title: name }, name),
+      el("div", { className: "bar-track" },
+        el("div", { className: "bar-fill", style: `width:${Math.max(pct, 1)}%` })),
+      el("div", { className: "bar-pct" }, `${pct}%`)));
+  }
+  return wrap;
+}
+
+function renderAnswers(data) {
+  const host = $("#results");
+  host.textContent = "";
+  const answers = data.answers || {};
+  const ids = Object.keys(answers);
+  if (!ids.length) {
+    host.append(el("div", { className: "empty" }, "No answers returned."));
+    return;
+  }
+
+  for (const id of ids) {
+    const a = answers[id];
+    let value, cls;
+    if (a.type === "choice")      { value = a.choice; cls = "choice"; }
+    else if (a.type === "score")  { value = (a.score ?? 0).toFixed(2); cls = "score"; }
+    else                          { value = (a.noul ?? 0).toFixed(3); cls = "noul"; }
+
+    const head = el("div", { className: "ans-head" },
+      el("span", { className: "ans-id" }, id),
+      el("span", { className: `ans-val ${cls}` }, String(value)));
+    if (typeof a.confidence === "number") {
+      const pct = Math.round(a.confidence * 100);
+      head.append(el("span", { className: "conf" },
+        `confidence ${pct}%` + (pct < 50 ? " ⚠" : "")));
+    }
+
+    const block = el("div", { className: "ans" }, head);
+    const b = bars(a.probabilities, a.legend, a.choice);
+    if (b) block.append(b);
+    host.append(block);
+  }
+
+  const meta = el("div", { className: "meta" });
+  if (data.model) meta.append(el("span", {}, `model ${data.model}`));
+  if (typeof data._latency_ms === "number") meta.append(el("span", {}, `${data._latency_ms} ms`));
+  if (data.usage) {
+    meta.append(el("span", {}, `${data.usage.input_tokens ?? "?"} in / ${data.usage.output_tokens ?? "?"} out`));
+  }
+  host.append(meta);
+
+  $("#raw").textContent = JSON.stringify(data, null, 2);
+  $("#raw-wrap").hidden = false;
+}
+
+/* ── submit ─────────────────────────────────────────────────── */
+
+async function run(ev) {
+  ev.preventDefault();
+  const btn = $("#run"), status = $("#status");
+  status.className = "status";
+  let body;
+  try {
+    body = buildRequest();
+  } catch (err) {
+    status.textContent = err.message;
+    status.classList.add("err");
+    return;
+  }
+
+  btn.disabled = true;
+  status.textContent = "asking Jev…";
+  const t0 = performance.now();
+  try {
+    const res = await fetch("/api/systemone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      const msg = data.error || `HTTP ${res.status}`;
+      const detail = data.detail ? ` — ${String(data.detail).slice(0, 300)}` : "";
+      throw new Error(msg + detail);
+    }
+    renderAnswers(data);
+    status.textContent = `done in ${Math.round(performance.now() - t0)} ms`;
+    status.classList.add("ok");
+  } catch (err) {
+    status.textContent = err.message;
+    status.classList.add("err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ── wiring ─────────────────────────────────────────────────── */
+
+$("#state").addEventListener("input", preview);
+$("#form").addEventListener("submit", run);
+$("#add-q").addEventListener("click", () => {
+  QUESTIONS.push({
+    id: `q${QUESTIONS.length + 1}`, type: "noul", instructions: "",
+  });
+  renderQuestions();
+});
+$("#sample").addEventListener("click", () => {
+  $("#state").value = SAMPLE;
+  $("#state-status").textContent = `${SAMPLE.length} chars`;
+  preview();
+});
+$("#clear").addEventListener("click", () => {
+  $("#state").value = "";
+  $("#state-status").textContent = "";
+  $("#results").innerHTML = '<div class="empty">Nothing classified yet.</div>';
+  $("#raw-wrap").hidden = true;
+  preview();
+});
+
+renderQuestions();
+</script>
+</body>
+</html>
