@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jev — support triage demo</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#2a2f3a; --fg:#e6e9ef;
+          --muted:#8b93a3; --accent:#6ee7b7; --err:#f87171; --warn:#fbbf24; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); padding:32px 20px;
+         font:15px/1.55 ui-sans-serif,system-ui,"Segoe UI",sans-serif; }
+  .wrap { max-width:640px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p.sub { color:var(--muted); margin:0 0 24px; font-size:14px; }
+  textarea { width:100%; min-height:150px; padding:12px; border-radius:8px;
+             border:1px solid var(--line); background:var(--panel); color:var(--fg);
+             font:inherit; resize:vertical; }
+  button { margin-top:12px; padding:10px 18px; border:0; border-radius:8px;
+           background:var(--accent); color:#08120e; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:progress; }
+  .status { margin-left:10px; font-size:13px; color:var(--muted); }
+  .status.err { color:var(--err); }
+  .card { margin-top:24px; padding:16px; border:1px solid var(--line);
+          border-radius:10px; background:var(--panel); }
+  .card h2 { font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+             color:var(--muted); margin:0 0 10px; }
+  .ans { margin-bottom:16px; }
+  .ans:last-child { margin-bottom:0; }
+  .ans .label { font-size:12px; color:var(--muted); }
+  .ans .value { font-size:17px; font-weight:600; }
+  .bar { display:flex; align-items:center; gap:8px; font-size:13px; margin-top:4px; }
+  .bar .name { width:110px; flex:none; color:var(--muted); }
+  .track { flex:1; height:8px; background:var(--line); border-radius:4px; overflow:hidden; }
+  .fill { height:100%; background:var(--accent); }
+  .bar .pct { width:38px; text-align:right; color:var(--muted); font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Support ticket triage</h1>
+  <p class="sub">Type a message — Jev answers three typed questions about it.</p>
+
+  <textarea id="state" placeholder="Paste a ticket…">Since the 09:15 deploy nobody on support can log in — "invalid session" on every attempt. Customers are emailing and we can't answer. Can someone look right away?</textarea>
+  <div><button id="go">Classify</button><span class="status" id="status"></span></div>
+
+  <div class="card" id="out" hidden>
+    <h2>Answers</h2>
+    <div id="answers"></div>
+  </div>
+</div>
+
+<script type="module">
+const API = "/api/systemone";
+
+// One request = state (the text) + questions (typed, with criteria).
+function buildRequest(state) {
+  return {
+    state,
+    questions: {
+      kind: {
+        type: "choice",
+        instructions: "What kind of message is this?",
+        criteria: {
+          bug: "A defect or malfunction in software",
+          question: "Someone asking for an answer or explanation",
+          billing: "Anything about invoices, payments or refunds",
+          other: "None of the above",
+        },
+      },
+      needs_reply: {
+        type: "noul",   // null-or-unit-legend: probability the statement is true
+        instructions: "The author expects a reply from a specific person or the reader",
+      },
+      urgency: {
+        type: "score",  // ordered rubric, lowest level first
+        instructions: "How time-sensitive is this?",
+        criteria: ["No deadline implied", "Should be handled this week", "Blocking someone right now"],
+      },
+    },
+  };
+}
+
+const $ = s => document.querySelector(s);
+const el = (t, props = {}, ...kids) => {
+  const n = Object.assign(document.createElement(t), props);
+  n.append(...kids);
+  return n;
+};
+
+function barRow(name, p) {
+  const pct = Math.round(p * 100);
+  return el("div", { className: "bar" },
+    el("div", { className: "name", title: name }, name),
+    el("div", { className: "track" }, el("div", { className: "fill", style: `width:${Math.max(pct,1)}%` })),
+    el("div", { className: "pct" }, `${pct}%`));
+}
+
+function render(data) {
+  const host = $("#answers");
+  host.textContent = "";
+  const a = data.answers ?? data;   // one answer per question id
+
+  for (const [id, ans] of Object.entries(a)) {
+    const box = el("div", { className: "ans" }, el("div", { className: "label" }, id));
+    if (ans.choice !== undefined) {
+      box.append(el("div", { className: "value" }, ans.choice));
+      if (ans.probabilities)
+        for (const [k, p] of Object.entries(ans.probabilities).sort((x, y) => y[1] - x[1]))
+          box.append(barRow(k, p));
+    } else if (typeof ans.probability === "number") {
+      box.append(el("div", { className: "value" }, `${Math.round(ans.probability * 100)}% likely`));
+      box.append(barRow(ans.legend?.true ?? "true", ans.probability));
+    } else if (ans.score !== undefined) {
+      box.append(el("div", { className: "value" }, String(ans.score)));
+    } else {
+      box.append(el("pre", {}, JSON.stringify(ans, null, 2)));
+    }
+    host.append(box);
+  }
+  if (!host.children.length) host.append(el("pre", {}, JSON.stringify(data, null, 2)));
+  $("#out").hidden = false;
+}
+
+$("#go").addEventListener("click", async () => {
+  const btn = $("#go"), status = $("#status");
+  const state = $("#state").value.trim();
+  if (!state) { status.textContent = "nothing to classify"; status.className = "status err"; return; }
+
+  btn.disabled = true;
+  status.className = "status";
+  status.textContent = "asking Jev…";
+  const t0 = performance.now();
+  try {
+    const res = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildRequest(state)),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    render(data);
+    status.textContent = `done in ${Math.round(performance.now() - t0)} ms`;
+  } catch (e) {
+    status.textContent = e.message;
+    status.className = "status err";
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

@@ -18,10 +18,18 @@ python3 server.py          # → http://localhost:8000
 =PORT= and =JEV_MODEL= are optional (=jev-latest= by default).
 
 * Layout
-| file         | role                                                    |
-|--------------+---------------------------------------------------------|
-| =index.html=   | UI: state editor, question builder, result rendering     |
-| =server.py=    | static file server + =POST /api/systemone= proxy           |
+| file             | role                                                 |
+|------------------+------------------------------------------------------|
+| =index.html=       | UI: state editor, question builder, result rendering  |
+| =server.py=        | static file server + =POST /api/systemone= proxy        |
+| =demo.html=        | focused single-file demo: ticket triage in ~180 lines |
+| =demo-server.py=   | ~40-line proxy for the demo (same API, less ceremony) |
+
+=demo.html= is the "start here" example: a textarea, one button, and three
+questions (=kind= choice, =needs_reply= noul, =urgency= score) with result
+bars. Run it with =python3 demo-server.py=, then open
+=http://localhost:8000/demo.html=. Keep it next to the file it serves — the
+proxy serves the current directory.
 
 * Primitives used
 - =choice= → one label from a closed set, with =probabilities= and =confidence=
