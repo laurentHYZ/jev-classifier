@@ -100,7 +100,11 @@
   <div class="grid">
     <!-- ── left: state + questions ───────────────────────────── -->
     <form class="card" id="form">
-      <h2>State</h2>
+      <h2>API key</h2>
+      <input id="key" type="password" autocomplete="off" spellcheck="false"
+             placeholder="sk-…  — sent only to api.typesafe.ai, never stored">
+
+      <h2 style="margin-top:20px">State</h2>
       <textarea id="state" placeholder="Paste the text to classify…"></textarea>
       <div class="row" style="margin-top:8px">
         <button type="button" class="ghost" id="sample">Load sample</button>
@@ -369,13 +373,23 @@ async function run(ev) {
     return;
   }
 
+  const key = $("#key").value.trim();
+  if (!key) {
+    status.textContent = "paste your TypeSafe API key first";
+    status.classList.add("err");
+    $("#key").focus();
+    return;
+  }
+
   btn.disabled = true;
   status.textContent = "asking Jev…";
   const t0 = performance.now();
   try {
-    const res = await fetch("/api/systemone", {
+    const API = location.protocol === "file:" ? "https://api.typesafe.ai/v1/systemone"
+                                         : "/api/systemone";
+    const res = await fetch(API, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       body: JSON.stringify(body),
     });
     const data = await res.json();

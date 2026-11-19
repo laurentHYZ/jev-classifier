@@ -16,6 +16,10 @@
   textarea { width:100%; min-height:150px; padding:12px; border-radius:8px;
              border:1px solid var(--line); background:var(--panel); color:var(--fg);
              font:inherit; resize:vertical; }
+  .keyrow { display:flex; align-items:center; gap:10px; margin:0 0 14px; }
+  .keyrow label { font-size:13px; color:var(--muted); flex:none; }
+  .keyrow input { flex:1; padding:8px 10px; border-radius:8px; border:1px solid var(--line);
+                  background:var(--panel); color:var(--fg); font:inherit; font-size:13px; }
   button { margin-top:12px; padding:10px 18px; border:0; border-radius:8px;
            background:var(--accent); color:#08120e; font-weight:600; cursor:pointer; }
   button:disabled { opacity:.5; cursor:progress; }
@@ -39,7 +43,12 @@
 <body>
 <div class="wrap">
   <h1>Support ticket triage</h1>
-  <p class="sub">Type a message — Jev answers three typed questions about it.</p>
+  <p class="sub">Type a message — Jev answers three typed questions about it. Bring your own TypeSafe API key; the request goes straight to api.typesafe.ai.</p>
+
+  <div class="keyrow">
+    <label for="key">API key</label>
+    <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…  (sent only to api.typesafe.ai)">
+  </div>
 
   <textarea id="state" placeholder="Paste a ticket…">Since the 09:15 deploy nobody on support can log in — "invalid session" on every attempt. Customers are emailing and we can't answer. Can someone look right away?</textarea>
   <div><button id="go">Classify</button><span class="status" id="status"></span></div>
@@ -51,7 +60,9 @@
 </div>
 
 <script type="module">
-const API = "/api/systemone";
+// Same-origin proxy (server.py) when served over HTTP; direct otherwise.
+const API = location.protocol === "file:" ? "https://api.typesafe.ai/v1/systemone"
+                                         : "/api/systemone";
 
 // One request = state (the text) + questions (typed, with criteria).
 function buildRequest(state) {
@@ -125,6 +136,13 @@ function render(data) {
 $("#go").addEventListener("click", async () => {
   const btn = $("#go"), status = $("#status");
   const state = $("#state").value.trim();
+  const key = $("#key").value.trim();
+  if (!key) {
+    status.textContent = "paste your TypeSafe API key first";
+    status.className = "status err";
+    $("#key").focus();
+    return;
+  }
   if (!state) { status.textContent = "nothing to classify"; status.className = "status err"; return; }
 
   btn.disabled = true;
@@ -134,11 +152,14 @@ $("#go").addEventListener("click", async () => {
   try {
     const res = await fetch(API, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       body: JSON.stringify(buildRequest(state)),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (!res.ok) {
+      const detail = data.detail ? ` — ${String(data.detail).slice(0, 200)}` : "";
+      throw new Error((data.error || `HTTP ${res.status}`) + detail);
+    }
     render(data);
     status.textContent = `done in ${Math.round(performance.now() - t0)} ms`;
   } catch (e) {

@@ -2,12 +2,18 @@
 """Jev Classifier — static page + tiny proxy.
 
 Serves ./index.html and proxies POST /api/systemone to the TypeSafe API.
-The API key stays on the server (env var); it is never sent to the browser.
+The visitor's own API key is read from the request's `Authorization`
+header and forwarded untouched — no key is stored on the server.
 Stdlib only: python3 server.py, then open http://localhost:8000
 
-Why a proxy at all? api.typesafe.ai answers OPTIONS with
-"Disallowed CORS origin", so a browser cannot call it directly. This also
-keeps the key out of client-side JS.
+Why a proxy at all? The TypeSafe API does not send an
+`Access-Control-Allow-Origin` header, so a browser cannot call it
+cross-origin. This proxy relays the call same-origin, adding the
+`_latency_ms` field. Because the key is the caller's, it is safe to expose
+publicly.
+
+(Do not put `export TYPESAFE_API_KEY=...` in the environment: the server
+never reads it, and a process environment is a leaking place for a secret.)
 """
 
 from __future__ import annotations
@@ -48,12 +54,12 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(404, {"error": "not found"})
             return
 
-        key = os.environ.get("TYPESAFE_API_KEY", "").strip()
-        if not key:
+        auth = (self.headers.get("Authorization") or "").strip()
+        if not auth.lower().startswith("bearer "):
             self._json(
-                500,
-                {"error": "TYPESAFE_API_KEY is not set in the server environment. "
-                          "Run: TYPESAFE_API_KEY=... python3 server.py"},
+                401,
+                {"error": "missing API key — paste one in the page "
+                          "(sent as 'Authorization: Bearer <TYPESAFE_API_KEY>')"},
             )
             return
 
@@ -84,7 +90,7 @@ class Handler(SimpleHTTPRequestHandler):
             API_URL,
             data=json.dumps(outbound).encode(),
             headers={
-                "Authorization": f"Bearer {key}",
+                "Authorization": auth,
                 "Content-Type": "application/json",
             },
             method="POST",
@@ -116,10 +122,9 @@ class Handler(SimpleHTTPRequestHandler):
 def main() -> None:
     if not os.path.exists(os.path.join(ROOT, "index.html")):
         sys.exit("index.html not found next to server.py")
-    if not os.environ.get("TYPESAFE_API_KEY"):
-        print("! TYPESAFE_API_KEY not set — the page will load, requests will fail.",
-              file=sys.stderr)
     print(f"Jev Classifier → http://localhost:{PORT}  (model: {MODEL})", file=sys.stderr)
+    print("  no server-side key: paste your own TypeSafe key in the page.",
+          file=sys.stderr)
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
 
 

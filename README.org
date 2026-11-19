@@ -5,17 +5,25 @@ A single static page plus a ~130-line stdlib proxy. Paste text, define typed
 questions (=choice=, =score=, =noul=), get structured answers with probabilities
 and confidence. No framework, no build step, no dependencies.
 
+* Bring your own key
+The page has an API-key field. Visitors paste /their own/ TypeSafe key; it is
+sent only to =api.typesafe.ai= as an =Authorization: Bearer= header, never
+stored, and never touches this project's servers. That is what makes the demo
+safe to publish: whoever runs the proxy spends nothing.
+
 * Why a proxy
-=api.typesafe.ai= replies to =OPTIONS= with ~Disallowed CORS origin~, so a browser
-cannot call it directly. =server.py= forwards the call server-side, which also
-keeps =TYPESAFE_API_KEY= out of client-side JavaScript.
+=api.typesafe.ai= sends no =Access-Control-Allow-Origin= header, so a browser
+cannot call it cross-origin. =server.py= relays the call same-origin and forwards
+the caller's =Authorization= header untouched. It needs no key of its own.
 
 * Run
 #+begin_src bash
-export TYPESAFE_API_KEY="..."
-python3 server.py          # → http://localhost:8000
+python3 server.py          # → http://localhost:8000, paste a key in the page
 #+end_src
 =PORT= and =JEV_MODEL= are optional (=jev-latest= by default).
+
+Or open =demo.html= straight from disk (=file://=) — the direct API call works
+from there too, no proxy needed.
 
 * Layout
 | file             | role                                                 |
@@ -31,6 +39,13 @@ bars. Run it with =python3 demo-server.py=, then open
 =http://localhost:8000/demo.html=. Keep it next to the file it serves — the
 proxy serves the current directory.
 
+* Publish it
+Any static host works (GitHub Pages, Netlify, S3…) because there is no server
+secret. =demo.html= calls =api.typesafe.ai= directly when it is not served
+next to a proxy; if your host's CSP blocks that, keep =server.py= in front of
+it. Request rate limiting is still polite — it protects your visitors, not
+your key.
+
 * Primitives used
 - =choice= → one label from a closed set, with =probabilities= and =confidence=
 - =score=  → position on an ordered rubric
@@ -40,6 +55,6 @@ Questions are atomic and independent; combine them in code (or in the UI) rather
 than asking one vague question that weighs several factors.
 
 * Deploy notes
-- Serving beyond localhost: put it behind a reverse proxy with TLS and add
-  authentication. The proxy holds a key that can spend money.
-- Do not commit =.env=; the key belongs in the environment.
+- No server-side key, so there is no bill to protect. The visitor's key can
+  still be abused by /them/; keep the key field out of logs.
+- Never log request headers: the =Authorization= value is a live credential.

@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Serve demo.html (any file) + /api/systemone proxy. Stdlib only.
 
-    TYPESAFE_API_KEY=... python3 demo-server.py
+    python3 demo-server.py
     # -> http://localhost:8000/demo.html
+
+No API key lives here. The browser's `Authorization` header is forwarded
+as-is, so each visitor uses their own TypeSafe key and the server never
+sees or stores it. That makes this proxy safe to expose publicly.
 """
 import json, os, sys, urllib.error, urllib.request
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -27,15 +31,15 @@ class H(SimpleHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/api/systemone":
             return self._json(404, {"error": "not found"})
-        key = os.environ.get("TYPESAFE_API_KEY", "").strip()
-        if not key:
-            return self._json(500, {"error": "TYPESAFE_API_KEY not set"})
+        auth = (self.headers.get("Authorization") or "").strip()
+        if not auth.lower().startswith("bearer "):
+            return self._json(401, {"error": "missing Authorization: Bearer <TYPESAFE_API_KEY>"})
         payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         out = {"model": payload.get("model") or MODEL,
                "state": payload["state"], "questions": payload["questions"]}
         req = urllib.request.Request(
             API_URL, data=json.dumps(out).encode(), method="POST",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+            headers={"Authorization": auth, "Content-Type": "application/json"})
         try:
             with urllib.request.urlopen(req, timeout=90) as r:
                 return self._json(r.status, json.loads(r.read()))
@@ -46,5 +50,5 @@ class H(SimpleHTTPRequestHandler):
             return self._json(502, {"error": f"cannot reach TypeSafe: {e.reason}"})
 
 
-print(f"http://localhost:8000/demo.html", file=sys.stderr)
+print("http://localhost:8000/demo.html", file=sys.stderr)
 ThreadingHTTPServer(("127.0.0.1", int(os.environ.get("PORT", 8000))), H).serve_forever()
