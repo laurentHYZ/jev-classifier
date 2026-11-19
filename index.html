@@ -102,7 +102,7 @@
     <form class="card" id="form">
       <h2>API key</h2>
       <input id="key" type="password" autocomplete="off" spellcheck="false"
-             placeholder="sk-…  — sent only to api.typesafe.ai, never stored">
+             placeholder="sk-or-…  — sent only to openrouter.ai, never stored">
 
       <h2 style="margin-top:20px">State</h2>
       <textarea id="state" placeholder="Paste the text to classify…"></textarea>
@@ -178,6 +178,9 @@ const QUESTIONS = [
     ],
   },
 ];
+
+const API = "https://openrouter.ai/api/alpha/decisions";
+const MODEL = "typesafe/jev-1.13";
 
 const SAMPLE = `Subject: login broken again after this morning's deploy
 
@@ -284,7 +287,7 @@ function buildQuestions() {
 function buildRequest() {
   const state = $("#state").value.trim();
   if (!state) throw new Error("state is empty");
-  return { state, questions: buildQuestions() };
+  return { model: MODEL, state, questions: buildQuestions() };
 }
 
 function preview() {
@@ -327,7 +330,8 @@ function renderAnswers(data) {
   for (const id of ids) {
     const a = answers[id];
     let value, cls;
-    if (a.type === "choice")      { value = a.choice; cls = "choice"; }
+    if (a.type === "refusal")     { value = "refused"; cls = "noul"; }
+    else if (a.type === "choice") { value = a.choice; cls = "choice"; }
     else if (a.type === "score")  { value = (a.score ?? 0).toFixed(2); cls = "score"; }
     else                          { value = (a.noul ?? 0).toFixed(3); cls = "noul"; }
 
@@ -348,10 +352,8 @@ function renderAnswers(data) {
 
   const meta = el("div", { className: "meta" });
   if (data.model) meta.append(el("span", {}, `model ${data.model}`));
-  if (typeof data._latency_ms === "number") meta.append(el("span", {}, `${data._latency_ms} ms`));
-  if (data.usage) {
-    meta.append(el("span", {}, `${data.usage.input_tokens ?? "?"} in / ${data.usage.output_tokens ?? "?"} out`));
-  }
+  if (typeof data.usage?.cost === "number")
+    meta.append(el("span", {}, `cost $${data.usage.cost.toFixed(6)}`));
   host.append(meta);
 
   $("#raw").textContent = JSON.stringify(data, null, 2);
@@ -385,8 +387,6 @@ async function run(ev) {
   status.textContent = "asking Jev…";
   const t0 = performance.now();
   try {
-    const API = location.protocol === "file:" ? "https://api.typesafe.ai/v1/systemone"
-                                         : "/api/systemone";
     const res = await fetch(API, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
@@ -394,9 +394,8 @@ async function run(ev) {
     });
     const data = await res.json();
     if (!res.ok) {
-      const msg = data.error || `HTTP ${res.status}`;
-      const detail = data.detail ? ` — ${String(data.detail).slice(0, 300)}` : "";
-      throw new Error(msg + detail);
+      const msg = data?.error?.message ?? data?.error ?? data?.detail ?? `HTTP ${res.status}`;
+      throw new Error(String(msg).slice(0, 240));
     }
     renderAnswers(data);
     status.textContent = `done in ${Math.round(performance.now() - t0)} ms`;

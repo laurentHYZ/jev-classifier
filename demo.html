@@ -43,11 +43,11 @@
 <body>
 <div class="wrap">
   <h1>Support ticket triage</h1>
-  <p class="sub">Type a message — Jev answers three typed questions about it. Bring your own TypeSafe API key; the request goes straight to api.typesafe.ai.</p>
+  <p class="sub">Type a message — Jev answers three typed questions about it. Bring your own OpenRouter API key; the request goes straight to openrouter.ai.</p>
 
   <div class="keyrow">
     <label for="key">API key</label>
-    <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…  (sent only to api.typesafe.ai)">
+    <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…  (sent only to openrouter.ai)">
   </div>
 
   <textarea id="state" placeholder="Paste a ticket…">Since the 09:15 deploy nobody on support can log in — "invalid session" on every attempt. Customers are emailing and we can't answer. Can someone look right away?</textarea>
@@ -60,13 +60,15 @@
 </div>
 
 <script type="module">
-// Same-origin proxy (server.py) when served over HTTP; direct otherwise.
-const API = location.protocol === "file:" ? "https://api.typesafe.ai/v1/systemone"
-                                         : "/api/systemone";
+// OpenRouter's Decisions API. It sends `access-control-allow-origin: *`, so a
+// static page can call it straight from the browser with the visitor's own key.
+const API = "https://openrouter.ai/api/alpha/decisions";
+const MODEL = "typesafe/jev-1.13";
 
 // One request = state (the text) + questions (typed, with criteria).
 function buildRequest(state) {
   return {
+    model: MODEL,
     state,
     questions: {
       kind: {
@@ -114,16 +116,21 @@ function render(data) {
 
   for (const [id, ans] of Object.entries(a)) {
     const box = el("div", { className: "ans" }, el("div", { className: "label" }, id));
-    if (ans.choice !== undefined) {
+    if (ans.type === "refusal") {
+      box.append(el("div", { className: "value" }, "refused — route to a human"));
+    } else if (ans.type === "choice" || ans.choice !== undefined) {
       box.append(el("div", { className: "value" }, ans.choice));
       if (ans.probabilities)
         for (const [k, p] of Object.entries(ans.probabilities).sort((x, y) => y[1] - x[1]))
           box.append(barRow(k, p));
-    } else if (typeof ans.probability === "number") {
-      box.append(el("div", { className: "value" }, `${Math.round(ans.probability * 100)}% likely`));
-      box.append(barRow(ans.legend?.true ?? "true", ans.probability));
-    } else if (ans.score !== undefined) {
-      box.append(el("div", { className: "value" }, String(ans.score)));
+    } else if (ans.type === "noul" || typeof ans.noul === "number") {
+      box.append(el("div", { className: "value" }, `${Math.round(ans.noul * 100)}% likely`));
+      box.append(barRow(ans.legend?.true ?? "true", ans.noul));
+    } else if (ans.type === "score" || ans.score !== undefined) {
+      const levels = ans.legend ?? {};
+      box.append(el("div", { className: "value" }, `score ${ans.score.toFixed(2)}`));
+      for (const [i, p] of Object.entries(ans.probabilities ?? {}))
+        box.append(barRow(levels[i] ?? `level ${i}`, p));
     } else {
       box.append(el("pre", {}, JSON.stringify(ans, null, 2)));
     }
@@ -138,7 +145,7 @@ $("#go").addEventListener("click", async () => {
   const state = $("#state").value.trim();
   const key = $("#key").value.trim();
   if (!key) {
-    status.textContent = "paste your TypeSafe API key first";
+    status.textContent = "paste your OpenRouter API key first";
     status.className = "status err";
     $("#key").focus();
     return;
@@ -157,8 +164,8 @@ $("#go").addEventListener("click", async () => {
     });
     const data = await res.json();
     if (!res.ok) {
-      const detail = data.detail ? ` — ${String(data.detail).slice(0, 200)}` : "";
-      throw new Error((data.error || `HTTP ${res.status}`) + detail);
+      const msg = data?.error?.message ?? data?.error ?? data?.detail ?? `HTTP ${res.status}`;
+      throw new Error(String(msg).slice(0, 240));
     }
     render(data);
     status.textContent = `done in ${Math.round(performance.now() - t0)} ms`;

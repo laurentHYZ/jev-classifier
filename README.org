@@ -1,60 +1,59 @@
 #+title: Jev Classifier
-#+subtitle: type-safe text classification in the browser, backed by TypeSafe Jev
+#+subtitle: type-safe text classification in the browser, via OpenRouter's Decisions API
 
-A single static page plus a ~130-line stdlib proxy. Paste text, define typed
-questions (=choice=, =score=, =noul=), get structured answers with probabilities
-and confidence. No framework, no build step, no dependencies.
+A static page. Paste text, define typed questions (=choice=, =score=, =noul=),
+get structured answers with probabilities and confidence. No build step, no
+dependencies, no server.
+
+* Live demo
+[[https://laurentHYZ.github.io/jev-classifier/][laurentHYZ.github.io/jev-classifier]] — paste your own OpenRouter key and go.
 
 * Bring your own key
-The page has an API-key field. Visitors paste /their own/ TypeSafe key; it is
-sent only to =api.typesafe.ai= as an =Authorization: Bearer= header, never
-stored, and never touches this project's servers. That is what makes the demo
-safe to publish: whoever runs the proxy spends nothing.
+Both pages ask for an OpenRouter API key (=sk-or-…=) and send it directly to
+=openrouter.ai= as =Authorization: Bearer=. It is never stored and never passes
+through any server of this project — there is no server.
+Get a key at [[https://openrouter.ai/keys][openrouter.ai/keys]]; Jev is billed per input token (~$0.04 / 1M).
 
-* Why a proxy
-=api.typesafe.ai= sends no =Access-Control-Allow-Origin= header, so a browser
-cannot call it cross-origin. =server.py= relays the call same-origin and forwards
-the caller's =Authorization= header untouched. It needs no key of its own.
+* Why it works from a static page
+OpenRouter's Decisions API answers preflight requests with
+=access-control-allow-origin: *=, so a browser can call it cross-origin with the
+visitor's own key. (TypeSafe's own =api.typesafe.ai= sends no CORS header and
+would need a proxy.)
 
-* Run
-#+begin_src bash
-python3 server.py          # → http://localhost:8000, paste a key in the page
+* The request
+#+begin_src json
+POST https://openrouter.ai/api/alpha/decisions
+Authorization: Bearer sk-or-...
+
+{ "model": "typesafe/jev-1.13",
+  "state": "<text to classify>",
+  "questions": { "<id>": { "type": "choice" | "score" | "noul", ... } } }
 #+end_src
-=PORT= and =JEV_MODEL= are optional (=jev-latest= by default).
-
-Or open =demo.html= straight from disk (=file://=) — the direct API call works
-from there too, no proxy needed.
+Each answer carries a =type= and is nested under =answers= in the response.
+Check =type= before reading =choice=, =score=, or =noul= — the last is the 0–1
+probability. A =type= of ="refusal"= means that question was not answered; treat
+it as "not answered", never as a negative.
 
 * Layout
-| file             | role                                                 |
-|------------------+------------------------------------------------------|
-| =index.html=       | UI: state editor, question builder, result rendering  |
-| =server.py=        | static file server + =POST /api/systemone= proxy        |
-| =demo.html=        | focused single-file demo: ticket triage in ~180 lines |
-| =demo-server.py=   | ~40-line proxy for the demo (same API, less ceremony) |
+| file         | role                                                          |
+|--------------+---------------------------------------------------------------|
+| =index.html=   | UI: state editor, question builder, result rendering           |
+| =demo.html=    | focused single-file demo: ticket triage in ~180 lines          |
 
-=demo.html= is the "start here" example: a textarea, one button, and three
-questions (=kind= choice, =needs_reply= noul, =urgency= score) with result
-bars. Run it with =python3 demo-server.py=, then open
-=http://localhost:8000/demo.html=. Keep it next to the file it serves — the
-proxy serves the current directory.
-
-* Publish it
-Any static host works (GitHub Pages, Netlify, S3…) because there is no server
-secret. =demo.html= calls =api.typesafe.ai= directly when it is not served
-next to a proxy; if your host's CSP blocks that, keep =server.py= in front of
-it. Request rate limiting is still polite — it protects your visitors, not
-your key.
+=index.html= is the GitHub Pages landing page. =demo.html= is the "start here"
+example: a textarea, one button, and three questions (=kind= choice,
+=needs_reply= noul, =urgency= score) with result bars. Either file runs by
+opening it from disk.
 
 * Primitives used
 - =choice= → one label from a closed set, with =probabilities= and =confidence=
-- =score=  → position on an ordered rubric
+- =score=  → position on an ordered rubric (probabilities + =legend= of levels)
 - =noul=   → probability that one statement is true (0–1)
 
 Questions are atomic and independent; combine them in code (or in the UI) rather
 than asking one vague question that weighs several factors.
 
-* Deploy notes
-- No server-side key, so there is no bill to protect. The visitor's key can
-  still be abused by /them/; keep the key field out of logs.
-- Never log request headers: the =Authorization= value is a live credential.
+* Notes
+- Never log or commit a key; the key field is =type="password"= and is not stored.
+- Other decision models (Cloudflare Clef, Liquid D1, Mercury Decide) speak the
+  same API — only =model= changes.
